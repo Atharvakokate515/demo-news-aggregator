@@ -104,7 +104,13 @@ class YouTubeScraper:
             #IMPORTANT - Pydantic feature (.model_copy)
             result.append(video.model_copy(update={"transcript": transcript.text if transcript else None})) # in our earlier model we didnt have "transcript", we created a copy of our pydantic model, [video.transcript = None | result.transcript = "..."]
         return result   # a updated pydantic model (with "transcript" added)
-    
+
+"""
+"Why get_latest_videos and scrape_chanel functions seperate ?"
+
+def get_latest_videos --> Faster, RSS feed parsing is done faster, requires only 1 api call.
+def scrape_channel ---> Slower, getting transcripts is slow and require many API calls.
+"""
     
     
 if __name__ == "__main__":
