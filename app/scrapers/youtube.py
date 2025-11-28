@@ -95,6 +95,7 @@ class YouTubeScraper:
 
     #===================================================================================
     #Scraped Videos into Transcipts
+    #===================================================================================
     def scrape_channel(self, channel_id: str, hours: int = 150) -> list[ChannelVideo]:
         videos = self.get_latest_videos(channel_id, hours)
         result = []
