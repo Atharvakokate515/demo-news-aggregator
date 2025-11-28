@@ -28,16 +28,22 @@ class YouTubeScraper:
         proxy_password = os.getenv("PROXY_PASSWORD")
         
         if proxy_username and proxy_password:
-            proxy_config = WebshareProxyConfig(
+            proxy_config = WebshareProxyConfig(     #optional proxy, YouTube often rate-limits requests or blocks them from certain regions. 
                 proxy_username=proxy_username,
                 proxy_password=proxy_password
             )
         
-        self.transcript_api = YouTubeTranscriptApi(proxy_config=proxy_config)
-
+        self.transcript_api = YouTubeTranscriptApi(proxy_config=proxy_config) # Python library that allows you to fetch subtitles/transcripts from YouTube videos without using the YouTube API key.
+    
+    #===================================================================================
+    #get the RSS feed URL from Channel_ID
+    #===================================================================================
     def _get_rss_url(self, channel_id: str) -> str:
         return f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
-
+        
+    #===================================================================================
+    #extract video_id from the URL
+    #===================================================================================
     def _extract_video_id(self, video_url: str) -> str:
         if "youtube.com/watch?v=" in video_url:
             return video_url.split("v=")[1].split("&")[0]
@@ -47,30 +53,36 @@ class YouTubeScraper:
             return video_url.split("youtu.be/")[1].split("?")[0]
         return video_url
 
+    #===================================================================================
+    #gets transcript from video_id
+    #===================================================================================
     def get_transcript(self, video_id: str) -> Optional[Transcript]:
         try:
-            transcript = self.transcript_api.fetch(video_id)
-            text = " ".join([snippet.text for snippet in transcript.snippets])
-            return Transcript(text=text)
-        except (TranscriptsDisabled, NoTranscriptFound):
+            transcript = self.transcript_api.fetch(video_id)  
+            text = " ".join([snippet.text for snippet in transcript.snippets])  # you join all the "text" to form a transcript.
+            return Transcript(text=text)   # pydantic model returned.
+        except (TranscriptsDisabled, NoTranscriptFound):  # handles the exception to avoid code crash.
             return None
         except Exception:
             return None
 
+    #===================================================================================
+    # Parses the Channel, for the latest(24hrs) Videos, returns ChannelVideo object
+    #===================================================================================
     def get_latest_videos(self, channel_id: str, hours: int = 24) -> list[ChannelVideo]:
-        feed = feedparser.parse(self._get_rss_url(channel_id))
+        feed = feedparser.parse(self._get_rss_url(channel_id))  # uses FeedParser lib to parse through the RSS feed of the "CHANNEL_ID"
         if not feed.entries:
             return []
         
-        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)  # only the last 24hrs.
         videos = []
         
         for entry in feed.entries:
-            if "/shorts/" in entry.link:
+            if "/shorts/" in entry.link:   #ignore the youtube Shorts
                 continue
-            published_time = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc)
+            published_time = datetime(*entry.published_parsed[:6], tzinfo=timezone.utc) # This line converts the RSS timestamp (published_parsed) into a timezone-aware UTC datetime object..
             if published_time >= cutoff_time:
-                video_id = self._extract_video_id(entry.link)
+                video_id = self._extract_video_id(entry.link)  #extract the video id from the link
                 videos.append(ChannelVideo(
                     title=entry.title,
                     url=entry.link,
@@ -81,13 +93,16 @@ class YouTubeScraper:
         
         return videos
 
+    #===================================================================================
+    #Scraped Videos into Transcipts
     def scrape_channel(self, channel_id: str, hours: int = 150) -> list[ChannelVideo]:
         videos = self.get_latest_videos(channel_id, hours)
         result = []
         for video in videos:
             transcript = self.get_transcript(video.video_id)
-            result.append(video.model_copy(update={"transcript": transcript.text if transcript else None}))
-        return result
+            #IMPORTANT - Pydantic feature (.model_copy)
+            result.append(video.model_copy(update={"transcript": transcript.text if transcript else None})) # in our earlier model we didnt have "transcript", we created a copy of our pydantic model, [video.transcript = None | result.transcript = "..."]
+        return result   # a updated pydantic model (with "transcript" added)
     
     
     
