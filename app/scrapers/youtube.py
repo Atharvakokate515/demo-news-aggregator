@@ -58,7 +58,7 @@ class YouTubeScraper:
     #===================================================================================
     def get_transcript(self, video_id: str) -> Optional[Transcript]:
         try:
-            transcript = self.transcript_api.fetch(video_id)  
+            transcript = self.transcript_api.fetch(video_id)   # returns YoutubeTranscriptApi object, that contains a list of snippets(dict) that contains {text,start,duration}.
             text = " ".join([snippet.text for snippet in transcript.snippets])  # you join all the "text" to form a transcript.
             return Transcript(text=text)   # pydantic model returned.
         except (TranscriptsDisabled, NoTranscriptFound):  # handles the exception to avoid code crash.
