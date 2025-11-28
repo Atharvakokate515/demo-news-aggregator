@@ -9,7 +9,7 @@ class OpenAIArticle(BaseModel):
     title: str
     description: str
     url: str
-    guid: str
+    guid: str   # GUID = Globally Unique Identifier, used as primary key in Database.
     published_at: datetime
     category: Optional[str] = None
     
@@ -17,8 +17,11 @@ class OpenAIArticle(BaseModel):
 class OpenAIScraper:
     def __init__(self):
         self.rss_url = "https://openai.com/news/rss.xml"
-        self.converter = DocumentConverter()
+        self.converter = DocumentConverter() # its not being used, maybe mistake :\
 
+    #=====================================================================
+    #Fetch recent blog posts from OpenAI's RSS feed
+    #=====================================================================
     def get_articles(self, hours: int = 24) -> List[OpenAIArticle]:
         feed = feedparser.parse(self.rss_url)
         if not feed.entries:
@@ -29,11 +32,11 @@ class OpenAIScraper:
         articles = []
         
         for entry in feed.entries:
-            published_parsed = getattr(entry, "published_parsed", None)
+            published_parsed = getattr(entry, "published_parsed", None)  # if "entries.published_parsed" present good, else None and escape the "for" loop.
             if not published_parsed:
                 continue
             
-            published_time = datetime(*published_parsed[:6], tzinfo=timezone.utc)
+            published_time = datetime(*published_parsed[:6], tzinfo=timezone.utc) # The * expands the tuple into separate arguments for the function eg: datetime(2025, 11, 29, 14, 30, 10,timezone=...).
             if published_time >= cutoff_time:
                 articles.append(OpenAIArticle(
                     title=entry.get("title", ""),
@@ -44,7 +47,7 @@ class OpenAIScraper:
                     category=entry.get("tags", [{}])[0].get("term") if entry.get("tags") else None
                 ))
         
-        return articles
+        return articles # list of pydantic model (OpenAIArticle)
 
   
 if __name__ == "__main__":
