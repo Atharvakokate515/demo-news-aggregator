@@ -1,6 +1,8 @@
 import os
 from typing import List
-from openai import OpenAI
+from langchain_huggingface import HuggingFaceEndpoint
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
@@ -18,78 +20,106 @@ class RankedDigestList(BaseModel):
     articles: List[RankedArticle] = Field(description="List of ranked articles")
 
 
-CURATOR_PROMPT = """You are an expert AI news curator specializing in personalized content ranking for AI professionals.
-
-Your role is to analyze and rank AI-related news articles, research papers, and video content based on a user's specific profile, interests, and background.
-
-Ranking Criteria:
-1. Relevance to user's stated interests and background
-2. Technical depth and practical value
-3. Novelty and significance of the content
-4. Alignment with user's expertise level
-5. Actionability and real-world applicability
+PROMPT = """You are an expert AI news curator. Rank articles based on the user's profile.
 
 Scoring Guidelines:
-- 9.0-10.0: Highly relevant, directly aligns with user interests, significant value
-- 7.0-8.9: Very relevant, strong alignment with interests, good value
-- 5.0-6.9: Moderately relevant, some alignment, decent value
-- 3.0-4.9: Somewhat relevant, limited alignment, lower value
-- 0.0-2.9: Low relevance, minimal alignment, little value
-
-Rank articles from most relevant (rank 1) to least relevant. Ensure each article has a unique rank."""
-
-
-class CuratorAgent:
-    def __init__(self, user_profile: dict):
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.model = "gpt-4.1"
-        self.user_profile = user_profile
-        self.system_prompt = self._build_system_prompt()
-
-    def _build_system_prompt(self) -> str:
-        interests = "\n".join(f"- {interest}" for interest in self.user_profile["interests"])
-        preferences = self.user_profile["preferences"]
-        pref_text = "\n".join(f"- {k}: {v}" for k, v in preferences.items())
-        
-        return f"""{CURATOR_PROMPT}
+- 9.0-10.0: Highly relevant to user's interests
+- 7.0-8.9: Very relevant
+- 5.0-6.9: Moderately relevant
+- 3.0-4.9: Somewhat relevant
+- 0.0-2.9: Low relevance
 
 User Profile:
-Name: {self.user_profile["name"]}
-Background: {self.user_profile["background"]}
-Expertise Level: {self.user_profile["expertise_level"]}
+Name: {name}
+Background: {background}
+Expertise: {expertise_level}
 
 Interests:
 {interests}
 
 Preferences:
-{pref_text}"""
+{preferences}
 
+Rank these {num_digests} articles:
+
+{digest_list}
+
+Output as JSON with "articles" array. Each must have: digest_id, relevance_score (0.0-10.0), rank (1 to {num_digests}), reasoning."""
+
+
+class CuratorAgent:   # Thr currator agent needs "USER_PROFILE" as arg.
+    def __init__(self, user_profile: dict):
+        hf_token = os.getenv("HUGGINGFACE_API_TOKEN")
+        if not hf_token:
+            raise ValueError("HUGGINGFACE_API_TOKEN not found in .env file")
+        
+        self.user_profile = user_profile
+        
+        # Use larger model for better ranking (70B > 8B for complex reasoning)
+        self.llm = HuggingFaceEndpoint(
+            repo_id="meta-llama/Meta-Llama-3-70B-Instruct",
+            huggingfacehub_api_token=hf_token,
+            temperature=0.3,
+            max_new_tokens=4096,
+        )
+        
+        self.parser = JsonOutputParser(pydantic_object=RankedDigestList)
+        self.prompt = ChatPromptTemplate.from_template(PROMPT)
+        self.chain = self.prompt | self.llm | self.parser
+
+
+    
     def rank_digests(self, digests: List[dict]) -> List[RankedArticle]:
         if not digests:
             return []
         
+        interests = "\n".join(f"- {i}" for i in self.user_profile["interests"])
+        preferences = "\n".join(f"- {k}: {v}" for k, v in self.user_profile["preferences"].items())
         digest_list = "\n\n".join([
             f"ID: {d['id']}\nTitle: {d['title']}\nSummary: {d['summary']}\nType: {d['article_type']}"
             for d in digests
         ])
         
-        user_prompt = f"""Rank these {len(digests)} AI news digests based on the user profile:
-
-{digest_list}
-
-Provide a relevance score (0.0-10.0) and rank (1-{len(digests)}) for each article, ordered from most to least relevant."""
-
         try:
-            response = self.client.responses.parse(
-                model=self.model,
-                instructions=self.system_prompt,
-                temperature=0.3,
-                input=user_prompt,
-                text_format=RankedDigestList
-            )
+            result = self.chain.invoke({
+                "name": self.user_profile["name"],
+                "background": self.user_profile["background"],
+                "expertise_level": self.user_profile["expertise_level"],
+                "interests": interests,
+                "preferences": preferences,
+                "num_digests": len(digests),
+                "digest_list": digest_list
+            })
             
-            ranked_list = response.output_parsed
-            return ranked_list.articles if ranked_list else []
+            articles = [RankedArticle(**a) for a in result["articles"]] # RankedDigest object
+            articles.sort(key=lambda x: x.rank)  #rank the articles in the list as per rank
+            return articles   # list of ranked articles
+            
         except Exception as e:
             print(f"Error ranking digests: {e}")
             return []
+
+
+if __name__ == "__main__":
+    from app.profiles.user_profile import USER_PROFILE
+    
+    curator = CuratorAgent(USER_PROFILE)
+    
+    test_digests = [
+        {
+            "id": "youtube:test1",
+            "title": "Building RAG Systems",
+            "summary": "Practical guide to RAG implementation.",
+            "article_type": "youtube"
+        },
+        {
+            "id": "openai:test2",
+            "title": "GPT-5 Launch",
+            "summary": "Product announcement and pricing.",
+            "article_type": "openai"
+        }
+    ]
+    
+    ranked = curator.rank_digests(test_digests)
+    for a in ranked:
+        print(f"{a.rank}. {a.relevance_score}/10 - {a.digest_id}")
