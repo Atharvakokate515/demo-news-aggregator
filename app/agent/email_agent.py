@@ -1,7 +1,28 @@
+"""
+Email Agent - Personalized Email Introduction Generator
+
+Purpose:
+    Generates warm, engaging email introductions for daily digest emails.
+    Creates personalized greetings and previews of top articles.
+
+Key Features:
+    - Personalized greeting with user's name and date
+    - 2-3 sentence preview of top articles
+    - Highlights interesting themes
+    - Uses Llama-3-8B (simple text generation task)
+
+Usage:
+    agent = EmailAgent(user_profile)
+    intro = agent.generate_introduction(ranked_articles)
+    digest = agent.create_email_digest_response(articles, total, limit=10)
+"""
+
 import os
 from datetime import datetime
 from typing import List, Optional
-from openai import OpenAI
+from langchain_huggingface import HuggingFaceEndpoint
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import JsonOutputParser
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
@@ -49,68 +70,100 @@ class EmailDigest(BaseModel):
     ranked_articles: List[dict] = Field(description="Top 10 ranked articles with their details")
 
 
-EMAIL_PROMPT = """You are an expert email writer specializing in creating engaging, personalized AI news digests.
+PROMPT = """You are an expert email writer creating personalized AI news digests.
 
-Your role is to write a warm, professional introduction for a daily AI news digest email that:
-- Greets the user by name
-- Includes the current date
-- Provides a brief, engaging overview of what's coming in the top 10 ranked articles
-- Highlights the most interesting or important themes
-- Sets expectations for the content ahead
+Write a warm, professional introduction for a daily AI digest email.
 
-Keep it concise (2-3 sentences for the introduction), friendly, and professional."""
+Requirements:
+- Greet the user by name
+- Include today's date: {current_date}
+- Write 2-3 sentences previewing the top articles
+- Highlight interesting themes or important topics
+- Keep it friendly and engaging
+
+Top Articles to Preview:
+{article_summaries}
+
+Output as JSON with "greeting" and "introduction" fields."""
 
 
 class EmailAgent:
-    def __init__(self, user_profile: dict):
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.model = "gpt-4o-mini"
+    """
+    AI agent that generates personalized email introductions.
+    
+    Architecture:
+        Input: List of top-ranked articles
+        Output: Personalized greeting + preview
+        
+    """
+    def __init__(self, user_profile: dict):    # getting User_profile, (Q: from where ???)  'uesrprofile' file provides it
+        hf_token = os.getenv("HUGGINGFACE_API_TOKEN")
+        if not hf_token:
+            raise ValueError("HUGGINGFACE_API_TOKEN not found in .env file")
+        
         self.user_profile = user_profile
+        
+        # Use smaller/faster model for email generation (simpler task)
+        self.llm = HuggingFaceEndpoint(
+            repo_id="meta-llama/Meta-Llama-3-8B-Instruct",
+            huggingfacehub_api_token=hf_token,
+            temperature=0.7,
+            max_new_tokens=512,
+        )
+        
+        self.parser = JsonOutputParser(pydantic_object=EmailIntroduction)
+        self.prompt = ChatPromptTemplate.from_template(PROMPT)
+        self.chain = self.prompt | self.llm | self.parser
 
-    def generate_introduction(self, ranked_articles: List) -> EmailIntroduction:
+    def generate_introduction(self, ranked_articles: List) -> EmailIntroduction:   #getting RankedArticles as input (Q: from where ?)  currator provides it
+       """  Args:
+            ranked_articles: List of article objects (could be RankedArticle or dict)
+                            Must have 'title' and 'relevance_score' attributes/keys
+        
+            Returns:
+            EmailIntroduction with greeting and preview text
+            Returns fallback introduction if generation fails
+        """
+        
         if not ranked_articles:
+            current_date = datetime.now().strftime('%B %d, %Y')
             return EmailIntroduction(
-                greeting=f"Hey {self.user_profile['name']}, here is your daily digest of AI news for {datetime.now().strftime('%B %d, %Y')}.",
+                greeting=f"Hey {self.user_profile['name']}, here is your daily digest of AI news for {current_date}.",
                 introduction="No articles were ranked today."
             )
         
         top_articles = ranked_articles[:10]
         article_summaries = "\n".join([
-            f"{idx + 1}. {article.title if hasattr(article, 'title') else article.get('title', 'N/A')} (Score: {article.relevance_score if hasattr(article, 'relevance_score') else article.get('relevance_score', 0):.1f}/10)"
+            #  # “If this is an object with a title attribute, use it. Otherwise, treat it like a dictionary and try to get 'title'. If that fails, use 'N/A'.”
+            f"{idx + 1}. {article.title if hasattr(article, 'title') else article.get('title', 'N/A')} (Score: {article.relevance_score if hasattr(article, 'relevance_score') else article.get('relevance_score', 0):.1f}/10)"  
             for idx, article in enumerate(top_articles)
         ])
         
         current_date = datetime.now().strftime('%B %d, %Y')
-        user_prompt = f"""Create an email introduction for {self.user_profile['name']} for {current_date}.
-
-Top 10 ranked articles:
-{article_summaries}
-
-Generate a greeting and introduction that previews these articles."""
-
+        
         try:
-            response = self.client.responses.parse(
-                model=self.model,
-                instructions=EMAIL_PROMPT,
-                temperature=0.7,
-                input=user_prompt,
-                text_format=EmailIntroduction
-            )
+            result = self.chain.invoke({
+                "current_date": current_date,
+                "article_summaries": article_summaries
+            })
             
-            intro = response.output_parsed
+            intro = EmailIntroduction(**result)
+            
+            # Ensure greeting has correct format
             if not intro.greeting.startswith(f"Hey {self.user_profile['name']}"):
+                # Override with standard format if LLM didn't follow instructions
                 intro.greeting = f"Hey {self.user_profile['name']}, here is your daily digest of AI news for {current_date}."
             
             return intro
+            
         except Exception as e:
             print(f"Error generating introduction: {e}")
-            current_date = datetime.now().strftime('%B %d, %Y')
             return EmailIntroduction(
                 greeting=f"Hey {self.user_profile['name']}, here is your daily digest of AI news for {current_date}.",
                 introduction="Here are the top 10 AI news articles ranked by relevance to your interests."
             )
 
-    def create_email_digest(self, ranked_articles: List[dict], limit: int = 10) -> EmailDigest:
+    def create_email_digest(self, ranked_articles: List[dict], limit: int = 10) -> EmailDigest:   #getting RankedArticles as input (Q: from where ?)
         top_articles = ranked_articles[:limit]
         introduction = self.generate_introduction(top_articles)
         
@@ -130,3 +183,24 @@ Generate a greeting and introduction that previews these articles."""
             top_n=limit
         )
 
+
+if __name__ == "__main__":
+    from app.profiles.user_profile import USER_PROFILE
+    
+    agent = EmailAgent(USER_PROFILE)
+    
+    # Test with mock articles
+    test_articles = [
+        type('Article', (), {
+            'title': 'Building Production RAG Systems',
+            'relevance_score': 9.5
+        })(),
+        type('Article', (), {
+            'title': 'New AI Safety Research',
+            'relevance_score': 8.7
+        })(),
+    ]
+    
+    intro = agent.generate_introduction(test_articles)
+    print(f"Greeting: {intro.greeting}")
+    print(f"Introduction: {intro.introduction}")
