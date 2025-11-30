@@ -1,5 +1,18 @@
-from typing import Optional
+"""
+YouTube Transcript Processing Service
 
+Purpose:
+    Find YouTube videos without transcripts and fetch them.
+    
+When to run:
+    After scraping videos (runner.py)
+    Before generating digests (process_digest.py)
+    
+Why needed:
+    Scraper saves videos fast (metadata only)
+    This service fills in transcripts slowly (API calls)
+"""
+from typing import Optional
 import sys
 from pathlib import Path
 
@@ -8,7 +21,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from app.scrapers.youtube import YouTubeScraper
 from app.database.repository import Repository
 
-
+# ============================================================================
+# SPECIAL MARKER - Prevent Re-checking Failed Videos
+# ============================================================================
 TRANSCRIPT_UNAVAILABLE_MARKER = "__UNAVAILABLE__"
 
 
