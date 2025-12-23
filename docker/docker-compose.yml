@@ -16,5 +16,18 @@ services:
       timeout: 5s
       retries: 5
 
+  app:
+    build: .
+    container_name: ai-news-aggregator-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    # Optional: override defaults
+    # environment:
+    #   HOURS_BACK: 24
+    #   TOP_N: 10
+
 volumes:
   postgres_data:
