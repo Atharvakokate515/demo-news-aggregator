@@ -57,7 +57,7 @@ class CuratorAgent:   # Thr currator agent needs "USER_PROFILE" as arg.
         
         # Use larger model for better ranking (70B > 8B for complex reasoning)
         self.llm = HuggingFaceEndpoint(
-            repo_id="meta-llama/Meta-Llama-3-70B-Instruct",
+            repo_id="meta-llama/Meta-Llama-3-8B-Instruct",
             huggingfacehub_api_token=hf_token,
             temperature=0.3,
             max_new_tokens=4096,
