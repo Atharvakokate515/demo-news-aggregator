@@ -22,66 +22,17 @@ The pipeline runs in 5 stages:
 
 ### FlowChart
 ```mermaid
----
-config:
-  theme: neo-dark
-  layout: fixed
----
-flowchart TB
- subgraph SOURCES["**Data sources**"]
-        YT["YouTube RSS feeds"]
-        OA["OpenAI RSS feed"]
-        AN["Anthropic RSS feeds"]
-  end
- subgraph SCRAPE["**Stage 1 · Scrape**"]
-        YTS(["YouTubeScraper"])
-        OAS(["OpenAIScraper"])
-        ANS(["AnthropicScraper"])
-  end
- subgraph DB["**PostgreSQL database**"]
-        YTV[("youtube_videos")]
-        OAA[("openai_articles")]
-        ANA[("anthropic_articles")]
-        DIG[("digests")]
-  end
- subgraph ENRICH["**Stage 2 · Enrich**"]
-        TR["process_youtube_transcripts"]
-        MD["process_anthropic_markdown"]
-  end
- subgraph DIGEST["**Stage 3 · Digest**"]
-        DA(["**DigestAgent**"])
-  end
- subgraph RANK["**Stage 4 · Rank**"]
-        CA(["**CuratorAgent**"])
-        UP["user_profile.py"]
-  end
- subgraph EMAIL["**Stage 5 · Email**"]
-        EA(["**EmailAgent**"])
-        ES["send_email (Gmail SMTP)"]
-  end
-    YT --> YTS
-    YTS --> YTV
-    OA --> OAS
-    OAS --> OAA
-    AN --> ANS
-    ANS --> ANA
-    YTV --> TR & DA
-    TR --> YTV
-    ANA --> MD & DA
-    OAA --> DA
-    DA --> DIG
-    DIG --> CA
-    UP --> CA
-    CA --> EA
-    EA --> ES
-    MD --> ANA
+flowchart LR
 
-    style YTS stroke-width:4px,stroke-dasharray: 0
-    style OAS stroke-width:4px,stroke-dasharray: 0
-    style ANS stroke-width:4px,stroke-dasharray: 0
-    style DA stroke-width:4px,stroke-dasharray: 0
-    style CA stroke-width:4px,stroke-dasharray: 0
-    style EA stroke-width:4px,stroke-dasharray: 0
+YT[YouTube] --> SC[Scrape]
+OA[OpenAI] --> SC
+AN[Anthropic] --> SC
+
+SC --> DB[(Database)]
+DB --> EN[Enrich]
+EN --> DI[Digest]
+DI --> RA[Rank]
+RA --> EM[Email]
 ```
 ---
 
