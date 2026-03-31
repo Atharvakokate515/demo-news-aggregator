@@ -205,13 +205,13 @@ class Repository:
     #===================================================================================
     def get_youtube_videos_without_transcript(self, limit: Optional[int] = None) -> List[YouTubeVideo]:
         """
-            Find videos missing transcripts.
-            Why?
+        Find videos missing transcripts.
+        Why?
             Two-stage processing:
             1. Save video metadata (fast)
             2. Fetch transcript later (slow)
-            This finds videos stuck at stage 1.
-            SQL Generated:
+        This finds videos stuck at stage 1.
+        SQL Generated:
             SELECT * FROM youtube_videos 
             WHERE transcript IS NULL
             LIMIT 10

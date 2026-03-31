@@ -23,3 +23,6 @@ def get_database_url():
 
 engine = create_engine(get_database_url())
 SessionLocal = sessionmaker(bind=engine)
+
+def get_session():
+    return SessionLocal()

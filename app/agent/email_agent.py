@@ -116,14 +116,15 @@ class EmailAgent:
         self.chain = self.prompt | self.llm | self.parser
 
     def generate_introduction(self, ranked_articles: List) -> EmailIntroduction:   #getting RankedArticles as input (Q: from where ?)  currator provides it
+        """  Args:
+            ranked_articles: List of article objects (could be RankedArticle or dict)
+                            Must have 'title' and 'relevance_score' attributes/keys
+        
+            Returns:
+            EmailIntroduction with greeting and preview text
+            Returns fallback introduction if generation fails
         """
-        Args:
-        ranked_articles: List of article objects (could be RankedArticle or dict)
-        Must have 'title' and 'relevance_score' attributes/keys
-        Returns:
-        EmailIntroduction with greeting and preview text
-        Returns fallback introduction if generation fails
-        """
+        
         if not ranked_articles:
             current_date = datetime.now().strftime('%B %d, %Y')
             return EmailIntroduction(

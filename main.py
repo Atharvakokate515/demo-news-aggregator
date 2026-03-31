@@ -1,5 +1,6 @@
 import sys
-from app.runner import run_daily_pipeline
+from app.runner import run_scrapers
+from app.daily_runner import run_daily_pipeline
 
 
 def ensure_database_setup():
@@ -34,7 +35,7 @@ def main():
     hours_back = int(sys.argv[1])
     top_n = int(sys.argv[2])
 
-    run_daily_pipeline(hours_back=hours_back, top_n=top_n)
+    run_daily_pipeline(hours=hours_back, top_n=top_n)
 
 
 if __name__ == "__main__":
